@@ -8,14 +8,8 @@ class PDFToMarkdownConverter:
 
     def convert_pdf(self, pdf_path: str, output_dir: str) -> str:
         """
-        Convert a PDF document to Markdown.
-
-        Args:
             pdf_path: Source PDF path.
-            output_dir: Output markdown directory.
-
-        Returns:
-            Generated markdown file path.
+ 
         """
         pdf_file = Path(pdf_path)
 
@@ -37,16 +31,6 @@ class PDFToMarkdownConverter:
         return str(markdown_file)
 
     def convert_directory(self, input_dir: str, output_dir: str) -> list[str]:
-        """
-        Convert all PDFs from a directory to Markdown.
-
-        Args:
-            input_dir: Directory containing PDF files.
-            output_dir: Directory to save markdown files.
-
-        Returns:
-            List of generated markdown file paths.
-        """
         input_path = Path(input_dir)
         markdown_files = []
 
