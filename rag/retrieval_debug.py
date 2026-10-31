@@ -1,38 +1,23 @@
-import os
 import sys
 from dotenv import load_dotenv
 
-from langchain_huggingface import HuggingFaceEmbeddings
-from vectorstore.chroma_store import ChromaVectorStore, Retriever
+from config.local_ai import get_embeddings, get_vector_store
+from vectorstore.chroma_store import Retriever
 
 load_dotenv()
 
 
 def search_vectorstore(query: str, top: int = 5):
-    # Retrieve configuration from environment variables or use local defaults
-    persist_directory = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-    collection_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents")
+    embeddings = get_embeddings()
+    vector_store_wrapper = get_vector_store()
 
-    print(f"Initializing Local HuggingFace Embeddings (all-MiniLM-L6-v2)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2"
-    )
-
-    print(f"Connecting to ChromaDB at {persist_directory!r} (Collection: {collection_name!r})...")
-    vector_store_wrapper = ChromaVectorStore(
-        collection_name=collection_name,
-        persist_directory=persist_directory
-    )
-
-    # Get the underlying store and wrap it with the custom Retriever adapter
     chroma_store_instance = vector_store_wrapper.get_store(embeddings)
     retriever = Retriever(chroma_store_instance)
 
-    # Perform similarity search using ChromaDB
     results = retriever.retrieve(
         query=query,
-        company="",  # Empty string skips company filtering in debug mode unless specified
-        year=None,   # None skips year filtering
+        company=None,
+        year=None,
         k=top
     )
 

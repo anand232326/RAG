@@ -1,24 +1,16 @@
-import os
 from pathlib import Path
 from typing import Tuple, Optional
 from dotenv import load_dotenv
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.embeddings import Embeddings
 
+from config.local_ai import get_embeddings, get_vector_store
 from ingestion.pdf_to_markdown import PDFToMarkdownConverter
 from ingestion.semantic_chunker import chunk_markdown
 from rag.kpi_extractor_rag import extract_financial_metrics
 from database.save_metrics import save_metrics
 
-from vectorstore.azure_ai_search import (
-    AzureAISearchVectorStore,
-    Retriever as AzureSearchRetriever,
-)
-from vectorstore.chroma_store import (
-    ChromaVectorStore,
-    Retriever as ChromaRetriever,
-)
+from vectorstore.chroma_store import ChromaVectorStore, Retriever
 
 # Load environment variables from a .env file
 load_dotenv()
@@ -45,7 +37,7 @@ def parse_company_year(pdf_file: Path) -> Tuple[str, Optional[str]]:
 def ingest_document(
     pdf_path: str,
     embeddings: Embeddings,
-    vector_store_wrapper: ChromaVectorStore | AzureAISearchVectorStore
+    vector_store_wrapper: ChromaVectorStore
 ) -> None:
     """
     Ingest a PDF document, convert to markdown, chunk, store in vector DB,
@@ -53,83 +45,58 @@ def ingest_document(
     """
     pdf_file = Path(pdf_path)
 
-    try:
-        # Step 1: Parse metadata (company and year) from filename
-        company, year = parse_company_year(pdf_file)
-        print(f"\n[Ingest] Processing {pdf_file.name} (Company: {company!r}, Year: {year!r})")
+    company, year = parse_company_year(pdf_file)
+    print(f"\n[Ingest] Processing {pdf_file.name} (Company: {company!r}, Year: {year!r})")
 
-        # Step 2: Convert the PDF to Markdown format
-        converter = PDFToMarkdownConverter()
-        markdown_file = converter.convert_pdf(
-            pdf_path=pdf_path,
-            output_dir="data/markdown"
-        )
+    converter = PDFToMarkdownConverter()
+    markdown_file = converter.convert_pdf(
+        pdf_path=pdf_path,
+        output_dir="data/markdown"
+    )
 
-        # Step 3: Chunk the markdown document semantically
-        chunks = chunk_markdown(
-            markdown_file=markdown_file,
-            embeddings=embeddings
-        )
-        print(f"[Ingest] Generated {len(chunks)} chunks for {pdf_file.name}")
+    chunks = chunk_markdown(
+        markdown_file=markdown_file,
+        embeddings=embeddings
+    )
+    print(f"[Ingest] Generated {len(chunks)} chunks for {pdf_file.name}")
 
-        # Step 4: Upload the text chunks into the configured vector store
-        vector_store_wrapper.upload_chunks(
-            chunks=chunks, 
-            embeddings=embeddings,
+    vector_store_wrapper.upload_chunks(
+        chunks=chunks,
+        embeddings=embeddings,
+        company=company,
+        year=year,
+        source_file=pdf_file.name
+    )
+
+    parsed_year = int(year) if year and year.isdigit() else None
+    retriever = Retriever(vector_store_wrapper.get_store(embeddings))
+    metrics = extract_financial_metrics(
+        retriever=retriever,
+        company=company,
+        year=parsed_year
+    )
+
+    if metrics:
+        save_metrics(
             company=company,
-            year=year,
-            source_file=pdf_file.name
+            year=parsed_year,
+            metrics=metrics
         )
-
-        # Step 5: Instantiate the appropriate retriever
-        if isinstance(vector_store_wrapper, AzureAISearchVectorStore):
-            retriever = AzureSearchRetriever(vector_store_wrapper.client)
-        else:
-            chroma_store_instance = vector_store_wrapper.get_store(embeddings)
-            retriever = ChromaRetriever(chroma_store_instance)
-
-        # Step 6: Extract financial metrics using RAG
-        parsed_year = int(year) if year and str(year).isdigit() else None
-        metrics = extract_financial_metrics(
-            retriever=retriever,
-            company=company,
-            year=parsed_year
-        )
-
-        # Step 7: Persist extracted metrics to the PostgreSQL database
-        if metrics:
-            save_metrics(
-                company=company, 
-                year=parsed_year, 
-                metrics=metrics
-            )
-            print(f"[Success] Metrics saved for {company} ({year or 'N/A'})")
-        else:
-            print(f"[Warning] No metrics extracted for {pdf_file.name}")
-
-    except Exception as e:
-        print(f"[Error] Failed to ingest {pdf_file.name}: {str(e)}")
+        print(f"[Success] Metrics saved for {company} ({year or 'N/A'})")
+    else:
+        print(f"[Warning] No metrics extracted for {pdf_file.name}")
 
 
 def ingest_directory(input_dir: str) -> None:
     """
     Ingest all PDFs from a directory using Hugging Face and ChromaDB.
     """
-    print("Initializing Local HuggingFace Embeddings (all-MiniLM-L6-v2)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2"
-    )
-
-    # Initialize the Chroma Vector Store wrapper
-    vector_store_wrapper = ChromaVectorStore(
-        collection_name=os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents"),
-        persist_directory=os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-    )
+    embeddings = get_embeddings()
+    vector_store_wrapper = get_vector_store()
 
     pdf_dir = Path(input_dir)
     if not pdf_dir.exists():
-        print(f"[Error] Input directory '{input_dir}' does not exist.")
-        return
+        raise FileNotFoundError(f"Input directory '{input_dir}' does not exist.")
 
     # Find all PDF files inside the input directory
     pdf_files = list(pdf_dir.glob("*.pdf"))

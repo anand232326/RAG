@@ -1,14 +1,12 @@
-import os
+import json
 from collections.abc import Sequence
 from typing import Protocol
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from langchain_core.documents import Document
 
-from llm.azure_openai import get_structured_completion
-from langchain_huggingface import HuggingFaceEmbeddings
-from vectorstore.chroma_store import ChromaVectorStore, Retriever as ChromaRetriever
+from config.local_ai import create_chat_model, get_embeddings, get_vector_store
+from vectorstore.chroma_store import Retriever as ChromaRetriever
 
 load_dotenv()
 
@@ -40,7 +38,7 @@ class FinancialMetrics(BaseModel):
 def retrieve_context(
     retriever: ContextRetriever,
     company: str,
-    year: int
+    year: int | None
 ) -> str:
     """
     Retrieve broad financial context from ChromaDB.
@@ -53,7 +51,7 @@ def retrieve_context(
     risks,
     growth drivers,
     financial performance
-    for {company} fiscal year {year}
+    for {company} fiscal year {year or "not specified"}
     """
 
     # Retrieve matching LangChain Document objects from ChromaDB
@@ -72,7 +70,7 @@ def retrieve_context(
 
 def build_extraction_prompt(
     company: str,
-    year: int,
+    year: int | None,
     context: str
 ) -> str:
     """
@@ -82,7 +80,7 @@ def build_extraction_prompt(
 You are an expert financial analyst.
 
 Company: {company}
-Year: {year}
+Year: {year or "not specified"}
 
 Context:
 {context}
@@ -112,7 +110,7 @@ Instructions:
 def extract_financial_metrics(
     retriever: ContextRetriever,
     company: str,
-    year: int
+    year: int | None
 ) -> dict:
     """
     Extract KPIs using RAG.
@@ -129,10 +127,15 @@ def extract_financial_metrics(
         context=context
     )
 
-    metrics = get_structured_completion(
-        prompt=prompt,
-        response_model=FinancialMetrics
+    schema = FinancialMetrics.model_json_schema()
+    structured_prompt = (
+        f"{prompt}\nJSON schema:\n{json.dumps(schema)}\n"
+        "Return one JSON object matching this schema and no other text."
     )
+    response = create_chat_model(format="json").invoke(structured_prompt)
+    if not isinstance(response.content, str):
+        raise TypeError("Ollama returned a non-text response for KPI extraction.")
+    metrics = FinancialMetrics.model_validate_json(response.content)
 
     return metrics.model_dump()
 
@@ -141,16 +144,8 @@ def main() -> None:
     company = "Apple"
     year = 2024
 
-    # 1. Initialize local HuggingFace Embeddings
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2"
-    )
-
-    # 2. Initialize ChromaDB Store wrapper
-    vector_store_wrapper = ChromaVectorStore(
-        collection_name=os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents"),
-        persist_directory=os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-    )
+    embeddings = get_embeddings()
+    vector_store_wrapper = get_vector_store()
 
     # 3. Access underlying LangChain Chroma instance bound with embeddings
     chroma_instance = vector_store_wrapper.get_store(embeddings)

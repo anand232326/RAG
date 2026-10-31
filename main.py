@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from database.create_table import create_tables
+from database.postgres_sql import create_database
 from routes.chat import router as chat_router
 from routes.ingestion import router as ingestion_router
 from routes.dashboard import router as dashboard_router
@@ -8,6 +10,13 @@ app = FastAPI(
     title="Investor Intelligence API",
     version="1.0.0"
 )
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    create_database()
+    create_tables()
+
 
 # Register ingestion API endpoints
 app.include_router(

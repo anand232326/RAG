@@ -1,7 +1,7 @@
 from pathlib import Path
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_experimental.text_splitter import SemanticChunker
-from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv
 
 # Load environment variables from a .env file (if any exist)
@@ -23,7 +23,7 @@ def read_markdown(markdown_file: str) -> str:
 
 def chunk_markdown(
     markdown_file: str,
-    embeddings: HuggingFaceEmbeddings
+    embeddings: Embeddings
 ) -> list[Document]:
     """
     Generate semantic chunks from markdown using Hugging Face embeddings.

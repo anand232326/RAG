@@ -4,7 +4,7 @@ from database.postgres_sql import get_engine
 
 def save_metrics(
     company: str,
-    year: int,
+    year: int | None,
     metrics: dict
 ) -> None:
     """

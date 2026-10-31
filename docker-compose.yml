@@ -24,23 +24,54 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgresql://aaitech:rag@12345@rag-postgres:5432/financial_intelligence
+      - POSTGRES_HOST=rag-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=financial_intelligence
+      - POSTGRES_USER=aaitech
+      - POSTGRES_PASSWORD=rag@12345
+      - POSTGRES_SSLMODE=disable
       - CHROMA_PERSIST_DIRECTORY=/app/chroma_db
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:?}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:?}
-      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:?}
-      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:?}
-      - AZURE_OPENAI_CHAT_DEPLOYMENT=${AZURE_OPENAI_CHAT_DEPLOYMENT:?}
-      - AZURE_SEARCH_ENDPOINT=${AZURE_SEARCH_ENDPOINT:?}
-      - AZURE_SEARCH_API_KEY=${AZURE_SEARCH_API_KEY:?}
-      - AZURE_SEARCH_INDEX_NAME=${AZURE_SEARCH_INDEX_NAME:?}
+      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-financial-documents}
+      - HUGGINGFACE_EMBEDDING_MODEL=${HUGGINGFACE_EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      - HF_HOME=/root/.cache/huggingface
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_CHAT_MODEL=${OLLAMA_CHAT_MODEL:-qwen2.5:3b}
     volumes:
       - chroma_data:/app/chroma_db
+      - huggingface_cache:/root/.cache/huggingface
       - ./data:/app/data
     depends_on:
       rag-postgres:
         condition: service_healthy
+      ollama-model-init:
+        condition: service_completed_successfully
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama-model-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:3b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$$OLLAMA_CHAT_MODEL\""]
+    restart: "no"
 
 volumes:
   rag_postgres_data:
   chroma_data:
+  huggingface_cache:
+  ollama_data:
