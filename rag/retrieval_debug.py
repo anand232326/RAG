@@ -2,51 +2,58 @@ import os
 import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+from langchain_huggingface import HuggingFaceEmbeddings
+from vectorstore.chroma_store import ChromaVectorStore, Retriever
 
-from vectorstore.azure_ai_search import AzureAISearchVectorStore
+load_dotenv()
 
 
 def search_vectorstore(query: str, top: int = 5):
-    endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
-    api_key = os.getenv("AZURE_SEARCH_API_KEY")
-    index_name = os.getenv("AZURE_SEARCH_INDEX_NAME")
+    # Retrieve configuration from environment variables or use local defaults
+    persist_directory = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
+    collection_name = os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents")
 
-    if not endpoint or not api_key or not index_name:
-        raise RuntimeError(
-            "Missing Azure Search configuration. Set AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY, and AZURE_SEARCH_INDEX_NAME in your .env."
-        )
+    print(f"Initializing Local HuggingFace Embeddings (all-MiniLM-L6-v2)...")
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2"
+    )
 
-    store = AzureAISearchVectorStore(endpoint=endpoint, api_key=api_key, index_name=index_name)
-    results = list(store.client.search(query, top=top))
+    print(f"Connecting to ChromaDB at {persist_directory!r} (Collection: {collection_name!r})...")
+    vector_store_wrapper = ChromaVectorStore(
+        collection_name=collection_name,
+        persist_directory=persist_directory
+    )
 
-    print(f"Query: {query!r}")
+    # Get the underlying store and wrap it with the custom Retriever adapter
+    chroma_store_instance = vector_store_wrapper.get_store(embeddings)
+    retriever = Retriever(chroma_store_instance)
+
+    # Perform similarity search using ChromaDB
+    results = retriever.retrieve(
+        query=query,
+        company="",  # Empty string skips company filtering in debug mode unless specified
+        year=None,   # None skips year filtering
+        k=top
+    )
+
+    print(f"\nQuery: {query!r}")
     print(f"Top: {top}")
-    print(f"Results: {len(results)}\n")
+    print(f"Results found: {len(results)}\n")
 
-    for idx, result in enumerate(results, start=1):
-        content = None
-        try:
-            content = result.get("content")
-        except Exception:
-            content = getattr(result, "content", None)
-
-        if content is None:
-            try:
-                content = result["content"]
-            except Exception:
-                content = str(result)
+    for idx, doc in enumerate(results, start=1):
+        content = getattr(doc, "page_content", str(doc))
 
         snippet = content.strip().replace("\n", " ") if isinstance(content, str) else "<no content>"
         if len(snippet) > 350:
             snippet = snippet[:350].rstrip() + "..."
 
         print(f"Result {idx}")
-        print(f"  content snippet: {snippet}")
+        print(f"  Metadata: {getattr(doc, 'metadata', {})}")
+        print(f"  Content snippet: {snippet}")
         print("  " + "-" * 60)
 
     if not results:
-        print("No results returned. Verify your index contents or try a different query.")
+        print("No results returned. Verify your index/ChromaDB contents or try a different query.")
 
     return results
 

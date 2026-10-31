@@ -4,6 +4,7 @@ from database.postgres_sql import get_engine, create_database
 
 
 def create_tables() -> None:
+    """Create the financial_metrics table in PostgreSQL if it doesn't already exist."""
     engine = get_engine()
 
     query = """
@@ -23,6 +24,7 @@ def create_tables() -> None:
     );
     """
 
+    # Establish a safe transactional connection and execute the SQL query
     with engine.begin() as connection:
         connection.execute(text(query))
 
@@ -30,5 +32,6 @@ def create_tables() -> None:
 
 
 if __name__ == "__main__":
+    # Ensure the database exists before trying to create tables inside it
     create_database()
     create_tables()

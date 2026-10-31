@@ -1,13 +1,29 @@
 import os
-from types import SimpleNamespace
+from collections.abc import Sequence
+from typing import Protocol
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, Field
+from langchain_core.documents import Document
 
 from llm.azure_openai import get_structured_completion
-from vectorstore.azure_ai_search import AzureAISearchVectorStore
+from langchain_huggingface import HuggingFaceEmbeddings
+from vectorstore.chroma_store import ChromaVectorStore, Retriever as ChromaRetriever
 
 load_dotenv()
+
+class RetrievedDocument(Protocol):
+    page_content: str
+
+
+class ContextRetriever(Protocol):
+    def retrieve(
+        self,
+        query: str,
+        company: str,
+        year: int | None = None,
+        k: int = 4
+    ) -> Sequence[RetrievedDocument]: ...
 
 
 class FinancialMetrics(BaseModel):
@@ -21,61 +37,13 @@ class FinancialMetrics(BaseModel):
     growth_drivers: str | list | None = Field(None, alias="Top Growth Drivers")
 
 
-class Retriever:
-    def __init__(self, client):
-        self.client = client
-
-    def invoke(
-        self,
-        query: str,
-        company: str | None = None,
-        year: int | None = None,
-        top_k: int = 20
-    ) -> list:
-        """
-        Retrieve relevant chunks from Azure AI Search.
-        """
-        filter_expr = None
-
-        if company and year:
-            filter_expr = (
-                f"company eq '{company}' "
-                f"and year eq '{year}'"
-            )
-
-        results = (
-            self.client.search(
-                search_text=query,
-                top=top_k,
-                filter=filter_expr
-            )
-            if filter_expr
-            else self.client.search(
-                search_text=query,
-                top=top_k
-            )
-        )
-
-        documents = []
-
-        for result in results:
-            content = result.get("content", "")
-            documents.append(
-                SimpleNamespace(
-                    page_content=content
-                )
-            )
-
-        return documents
-
-
 def retrieve_context(
-    retriever: Retriever,
+    retriever: ContextRetriever,
     company: str,
     year: int
 ) -> str:
     """
-    Retrieve broad financial context from the vector store.
+    Retrieve broad financial context from ChromaDB.
     """
     query = f"""
     Annual report financial statements,
@@ -88,13 +56,14 @@ def retrieve_context(
     for {company} fiscal year {year}
     """
 
-    documents = retriever.invoke(
+    # Retrieve matching LangChain Document objects from ChromaDB
+    documents = retriever.retrieve(
         query=query,
         company=company,
         year=year,
-        top_k=20
+        k=20
     )
-    # print(documents)
+
     return "\n\n".join(
         doc.page_content
         for doc in documents
@@ -141,7 +110,7 @@ Instructions:
 
 
 def extract_financial_metrics(
-    retriever: Retriever,
+    retriever: ContextRetriever,
     company: str,
     year: int
 ) -> dict:
@@ -172,16 +141,24 @@ def main() -> None:
     company = "Apple"
     year = 2024
 
-    vector_store = AzureAISearchVectorStore(
-        endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
-        api_key=os.getenv("AZURE_SEARCH_API_KEY"),
-        index_name=os.getenv("AZURE_SEARCH_INDEX_NAME")
+    # 1. Initialize local HuggingFace Embeddings
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2"
     )
 
-    retriever = Retriever(
-        vector_store.client
+    # 2. Initialize ChromaDB Store wrapper
+    vector_store_wrapper = ChromaVectorStore(
+        collection_name=os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents"),
+        persist_directory=os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
     )
 
+    # 3. Access underlying LangChain Chroma instance bound with embeddings
+    chroma_instance = vector_store_wrapper.get_store(embeddings)
+
+    # 4. Initialize local Chroma Retriever wrapper
+    retriever = ChromaRetriever(chroma_instance)
+
+    # 5. Extract metrics using RAG
     results = extract_financial_metrics(
         retriever=retriever,
         company=company,
@@ -195,7 +172,7 @@ def main() -> None:
         print(value)
         print("-" * 80)
 
-
+    # 6. Save extracted metrics to database
     from database.save_metrics import save_metrics
 
     save_metrics(
@@ -203,6 +180,7 @@ def main() -> None:
         year=year,
         metrics=results
     )
+
 
 if __name__ == "__main__":
     main()

@@ -22,6 +22,9 @@ def get_engine(database: str | None = None):
     port = os.getenv("POSTGRES_PORT")
     user = os.getenv("POSTGRES_USER")
     password = os.getenv("POSTGRES_PASSWORD")
+    
+    # Read SSL mode from environment, default to 'prefer' or 'disable' for local dev
+    ssl_mode = os.getenv("POSTGRES_SSLMODE", "prefer")
 
     # URL-encode credentials to handle special characters (e.g., @ in password)
     encoded_user = quote(user, safe="")
@@ -30,7 +33,7 @@ def get_engine(database: str | None = None):
     connection_string = (
         f"postgresql+psycopg2://"
         f"{encoded_user}:{encoded_password}@{host}:{port}/{database}"
-        "?sslmode=require"
+        f"?sslmode={ssl_mode}"
     )
 
     return create_engine(connection_string)
@@ -48,6 +51,8 @@ def create_database() -> None:
     user = os.getenv("POSTGRES_USER")
     password = os.getenv("POSTGRES_PASSWORD")
     
+    ssl_mode = os.getenv("POSTGRES_SSLMODE", "prefer")
+    
     try:
         # Connect to default 'postgres' database using psycopg2 directly
         conn = psycopg2.connect(
@@ -56,7 +61,7 @@ def create_database() -> None:
             database="postgres",
             user=user,
             password=password,
-            sslmode="require"
+            sslmode=ssl_mode
         )
         # Enable autocommit mode before executing CREATE DATABASE
         conn.autocommit = True

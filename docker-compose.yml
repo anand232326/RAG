@@ -1,0 +1,46 @@
+services:
+  rag-postgres:
+    image: postgres:15-alpine
+    container_name: rag-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: aaitech
+      POSTGRES_PASSWORD: rag@12345
+      POSTGRES_DB: financial_intelligence
+    ports:
+      - "5432:5432"
+    volumes:
+      - rag_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aaitech -d financial_intelligence"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: investor-intelligence-app
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://aaitech:rag@12345@rag-postgres:5432/financial_intelligence
+      - CHROMA_PERSIST_DIRECTORY=/app/chroma_db
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:?}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:?}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:?}
+      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:?}
+      - AZURE_OPENAI_CHAT_DEPLOYMENT=${AZURE_OPENAI_CHAT_DEPLOYMENT:?}
+      - AZURE_SEARCH_ENDPOINT=${AZURE_SEARCH_ENDPOINT:?}
+      - AZURE_SEARCH_API_KEY=${AZURE_SEARCH_API_KEY:?}
+      - AZURE_SEARCH_INDEX_NAME=${AZURE_SEARCH_INDEX_NAME:?}
+    volumes:
+      - chroma_data:/app/chroma_db
+      - ./data:/app/data
+    depends_on:
+      rag-postgres:
+        condition: service_healthy
+
+volumes:
+  rag_postgres_data:
+  chroma_data:

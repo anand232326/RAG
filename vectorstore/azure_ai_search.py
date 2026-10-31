@@ -48,7 +48,13 @@ class Retriever:
     def __init__(self, client):
         self.client = client
 
-    def invoke(self,query: str,company: str | None = None,year: int | None = None,top_k: int = 20) -> list:
+    def invoke(
+        self,
+        query: str,
+        company: str | None = None,
+        year: int | None = None,
+        top_k: int = 20
+    ) -> list[SimpleNamespace]:
         """Retrieve relevant chunks from Azure AI Search.
         Returns a list of SimpleNamespace objects with `page_content`.
         """
@@ -75,3 +81,18 @@ class Retriever:
             content = result.get("content", "")
             documents.append(SimpleNamespace(page_content=content))
         return documents
+
+    def retrieve(
+        self,
+        query: str,
+        company: str,
+        year: int | None = None,
+        k: int = 4
+    ) -> list[SimpleNamespace]:
+        """Retrieve documents through the interface used by KPI extraction."""
+        return self.invoke(
+            query=query,
+            company=company,
+            year=year,
+            top_k=k
+        )
