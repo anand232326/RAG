@@ -73,7 +73,8 @@ def ingest_document(
     metrics = extract_financial_metrics(
         retriever=retriever,
         company=company,
-        year=parsed_year
+        year=parsed_year,
+        report_text=Path(markdown_file).read_text(encoding="utf-8")
     )
 
     if metrics:

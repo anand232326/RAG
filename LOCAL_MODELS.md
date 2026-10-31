@@ -21,6 +21,24 @@ Compose downloads the Ollama image and chat model on the first run. Hugging
 Face downloads the embedding model the first time a document is embedded.
 Both model caches are persisted in named volumes.
 
+The Dockerfile installs Python dependencies in a layer based only on
+`requirements.txt`; changing application code does not invalidate that layer.
+For development, start Compose Watch after the initial build:
+
+```bash
+docker compose up -d --build
+docker compose watch app
+```
+
+Python source edits sync into the running container and restart the app without
+rebuilding the image. Changes to `requirements.txt` or the Dockerfile trigger
+an image rebuild. Avoid `docker compose build --no-cache` unless you
+intentionally want to reinstall all dependencies.
+
+The React frontend is served by FastAPI at `http://localhost:8080`. For
+frontend-only development with hot reload, run `cd frontend && npm run dev`;
+the Vite server proxies `/api` and `/health` to port 8080.
+
 To select another Ollama model, set `OLLAMA_CHAT_MODEL` in `.env`; Compose
 downloads that model before starting the application.
 

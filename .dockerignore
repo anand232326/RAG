@@ -9,14 +9,26 @@
 # Python Cache
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual Environment
 .venv/
 venv/
+
+# Local data and model caches (mounted as volumes at runtime)
+data/
+chroma_db/
+models/
+.cache/
+frontend/node_modules/
+frontend/dist/
 
 # IDE
 .vscode/
 .idea/
 
 # Documentation
-*.md
+*.md

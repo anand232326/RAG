@@ -45,6 +45,34 @@ services:
         condition: service_healthy
       ollama-model-init:
         condition: service_completed_successfully
+    develop:
+      watch:
+        - action: sync+restart
+          path: .
+          target: /app
+          ignore:
+            - .git/
+            - .venv/
+            - venv/
+            - __pycache__/
+            - "*.pyc"
+            - .env
+            - .env.*
+            - data/
+            - chroma_db/
+            - models/
+            - .cache/
+            - frontend/
+            - requirements.txt
+            - dockerfile
+            - docker-compose.yml
+            - .dockerignore
+        - action: rebuild
+          path: requirements.txt
+        - action: rebuild
+          path: dockerfile
+        - action: rebuild
+          path: frontend/
 
   ollama:
     image: ollama/ollama:latest
@@ -74,4 +102,4 @@ volumes:
   rag_postgres_data:
   chroma_data:
   huggingface_cache:
-  ollama_data:
+  ollama_data:

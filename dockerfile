@@ -1,24 +1,25 @@
-# Use a lightweight Python image for the runtime
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Install uv for fast package installation
 RUN pip install uv
 
-# Copy requirements file first to leverage Docker layer caching
 COPY requirements.txt ./
 
-# Install dependencies system-wide using uv and cache downloaded packages
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -r requirements.txt
 
-# Copy the rest of the application code into the container
 COPY . /app
+COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
-# Expose the port the app will run on (matching main.py port 8080)
 EXPOSE 8080
 
-# Use uvicorn to run the FastAPI app defined in main.py
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

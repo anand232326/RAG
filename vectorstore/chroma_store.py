@@ -63,15 +63,21 @@ class Retriever:
         k: int = 4
     ) -> list[Document]:
         """Retrieve relevant chunks filtered by company and/or year."""
-        filters = {}
+        conditions = []
         if company:
-            filters["company"] = company
+            conditions.append({"company": {"$eq": company}})
         if year is not None:
-            filters["year"] = str(year)
+            conditions.append({"year": {"$eq": str(year)}})
+
+        filters = None
+        if len(conditions) == 1:
+            filters = conditions[0]
+        elif conditions:
+            filters = {"$and": conditions}
 
         results = self.chroma_store.similarity_search(
             query,
             k=k,
-            filter=filters or None
+            filter=filters
         )
         return results

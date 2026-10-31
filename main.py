@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from database.create_table import create_tables
 from database.postgres_sql import create_database
 from routes.chat import router as chat_router
@@ -10,6 +15,15 @@ app = FastAPI(
     title="Investor Intelligence API",
     version="1.0.0"
 )
+
+frontend_dist = Path(__file__).parent / "frontend" / "dist"
+frontend_assets = frontend_dist / "assets"
+if frontend_assets.is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=frontend_assets),
+        name="frontend-assets"
+    )
 
 
 @app.on_event("startup")
@@ -45,8 +59,19 @@ app.include_router(
     tags=["Health"]
 )
 
+
+@app.get("/", include_in_schema=False)
+def frontend() -> FileResponse:
+    index_file = frontend_dist / "index.html"
+    if not index_file.is_file():
+        raise FileNotFoundError(
+            "Frontend build is missing. Build it with `cd frontend && npm run build`."
+        )
+    return FileResponse(index_file)
+
+
 if __name__ == "__main__":
     import uvicorn
 
     # Run the FastAPI server locally on port 8080
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
